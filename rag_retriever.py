@@ -66,50 +66,90 @@ class RAGRetriever:
         
         schema_chunks = [
             {
-                "id": "HCP",
-                "content": """TABLE: HCP
-    Description: Stores information about healthcare professionals (HCPs), including personal details, roles, and classifications.
+                "id": "july_HCPs",
+                "content": """TABLE: july_HCPs
+    Database: healthcare_analytics
+    Description: Stores information about healthcare professionals (HCPs) for July data, including personal details, roles, and classifications.
     Columns:
-    - id (INT, PRIMARY KEY): Unique identifier for the HCP.
+    - id (VARCHAR(255), PRIMARY KEY): Unique identifier for the HCP.
     - customerid (INT, UNIQUE): Unique customer reference ID.
-    - englishname (VARCHAR(255)): Full name of the HCP in English.
-    - isconsultant (BOOLEAN): Whether the HCP is a consultant.
-    - isdecisionmaker (BOOLEAN): Whether the HCP is a decision-maker.
-    - issamspeaker (BOOLEAN): Whether the HCP is a SAM speaker.
-    - isuniversitystaff (BOOLEAN): Whether the HCP is part of university staff.
-    - isampmspeaker (BOOLEAN): Whether the HCP is an AM/PM speaker.
+    - englishname (TEXT): Full name of the HCP in English.
+    - isconsultant (BOOLEAN): Whether the HCP is a consultant (0 for false, 1 for true).
+    - isdecisionmaker (BOOLEAN): Whether the HCP is a decision-maker (0 for false, 1 for true).
+    - issamspeaker (BOOLEAN): Whether the HCP is a SAM speaker (0 for false, 1 for true).
+    - isuniversitystaff (BOOLEAN): Whether the HCP is part of university staff (0 for false, 1 for true).
+    - isampmspeaker (BOOLEAN): Whether the HCP is an AM/PM speaker (0 for false, 1 for true).
     - customerclassificationid (INT): ID representing the HCP's classification.
-    - CustomerClassification (VARCHAR(255)): Description of the classification.
+    - CustomerClassification (TEXT): Description of the classification.
     - specialityid (INT): ID of the HCP's specialty.
-    - Speciality (VARCHAR(255)): Name of the specialty.
+    - Speciality (TEXT): Name of the specialty.
     - countryid (INT): ID of the country where the HCP is located.
     - Country (VARCHAR(255)): Name of the country.
+    Character Set: utf8mb4 with utf8mb4_unicode_ci collation
     Relationships:
-    - Referenced by `MedicalReps.HCPId` (foreign key) — links a medical representative's interaction to a specific HCP."""
+    - Referenced by `july_interactions.HCPId` (foreign key) — links a medical representative's interaction to a specific HCP.
+    
+    Common Query Patterns:
+    - Filter by country: WHERE Country = 'Egypt' or WHERE LOWER(Country) LIKE '%egypt%'
+    - Filter by specialty: WHERE Speciality = 'Cardiology' or similar
+    - Filter by boolean flags: WHERE isconsultant = 1 (for true) or WHERE isconsultant = 0 (for false)
+    - Customer lookup: WHERE customerid = [number] or WHERE id = '[id_string]'"""
             },
             {
-                "id": "MedicalReps",
-                "content": """TABLE: MedicalReps
-    Description: Records medical representatives' interactions with healthcare professionals, including meeting details, status, and business line.
+                "id": "july_interactions",
+                "content": """TABLE: july_interactions
+    Database: healthcare_analytics
+    Description: Records medical representatives' interactions with healthcare professionals for July data, including meeting details, status, and business line information.
     Columns:
-    - MRId (INT, PRIMARY KEY): Unique identifier for the medical representative.
-    - MRArFullName (VARCHAR(255)): Full name of the medical representative (Arabic).
-    - InteractionId (INT): ID of the interaction.
+    - MRId (VARCHAR(255)): Identifier for the medical representative.
+    - MRArFullName (TEXT): Full name of the medical representative in Arabic.
+    - InteractionId (INT, PRIMARY KEY): Unique identifier for the interaction.
     - InteractionStatusId (INT): Numeric status code of the interaction.
     - InteractionStatus (VARCHAR(255)): Description of the interaction status.
-    - reportdate (DATE): Date of the interaction report.
+    - reportdate (DATETIME): Date and time of the interaction report.
     - lineid (INT): ID of the medical line involved in the interaction.
     - LineName (VARCHAR(255)): Name of the medical line.
     - businessUnitId (INT): ID of the business unit.
     - BusinessUnitName (VARCHAR(255)): Name of the business unit.
-    - HCPId (INT): Foreign key referencing the `HCP.id` column.
+    - HCPId (VARCHAR(255)): Foreign key referencing the `july_HCPs.id` column.
     - HCPCustomerId (INT): Customer ID of the HCP involved.
-    - HCPEnglishName (VARCHAR(255)): English name of the HCP involved.
-    - HCPArabicName (VARCHAR(255)): Arabic name of the HCP involved.
+    - HCPEnglishName (TEXT): English name of the HCP involved.
+    - HCPArabicName (TEXT): Arabic name of the HCP involved.
     - SpecialtyId (INT): ID of the HCP's specialty.
-    - Specialty (VARCHAR(255)): Name of the HCP's specialty.
+    - Specialty (TEXT): Name of the HCP's specialty.
+    Character Set: utf8mb4 with utf8mb4_unicode_ci collation
     Relationships:
-    - Foreign key (`HCPId`) references `HCP.id` — associates a medical representative with a specific healthcare professional."""
+    - Foreign key (`HCPId`) references `july_HCPs.id` — associates a medical representative with a specific healthcare professional.
+    
+    Common Query Patterns:
+    - Join with HCPs: JOIN july_HCPs ON july_interactions.HCPId = july_HCPs.id
+    - Filter by date: WHERE DATE(reportdate) = '2024-07-15' or WHERE reportdate BETWEEN '2024-07-01' AND '2024-07-31'
+    - Filter by status: WHERE InteractionStatus = 'Completed' or WHERE InteractionStatusId = [number]
+    - Filter by business unit: WHERE BusinessUnitName = '[unit_name]' or WHERE businessUnitId = [number]
+    - Aggregate by MR: GROUP BY MRId, MRArFullName"""
+            },
+            {
+                "id": "database_context",
+                "content": """DATABASE: healthcare_analytics
+    Description: Healthcare analytics database containing July 2024 data for healthcare professionals and medical representative interactions.
+    
+    Key Information:
+    - Database name: healthcare_analytics
+    - Main tables: july_HCPs, july_interactions
+    - Character encoding: utf8mb4 with utf8mb4_unicode_ci collation
+    - Date format in july_interactions: DATETIME format (YYYY-MM-DD HH:MM:SS)
+    - Boolean fields in july_HCPs: Stored as TINYINT (0 for false, 1 for true)
+    - Primary data source: CSV files loaded via LOAD DATA INFILE
+    
+    Sample Alternative Databases Available:
+    - employees: Sample employee database
+    - sakila: Sample DVD rental database
+    
+    Important Notes:
+    - Always use the correct table names: july_HCPs and july_interactions (not HCP or MedicalReps)
+    - Country names should be compared with proper case sensitivity
+    - Text fields use TEXT data type which allows for longer content
+    - Foreign key relationship exists between july_interactions.HCPId and july_HCPs.id"""
             }
         ]
         
@@ -200,7 +240,7 @@ class RAGRetriever:
         except Exception as e:
             self.logger.error(f"Error clearing collection: {e}")
     
-    def retrieve_chunks(self, query: str, k: int = 2) -> List[Tuple[str, float]]:
+    def retrieve_chunks(self, query: str, k: int = 3) -> List[Tuple[str, float]]:
         """
         Retrieve top k similar schema chunks based on the query
         
@@ -228,7 +268,7 @@ class RAGRetriever:
         
         return filtered
     
-    def get_schema_context(self, query: str, k: int = 2) -> str:
+    def get_schema_context(self, query: str, k: int = 3) -> str:
         """
         Get formatted schema context for LLM consumption
         
