@@ -45,10 +45,10 @@ class QueryToSQLChain:
             
             # Step 0: Check for SQL injection before processing
             self.logger.info("Step 0: Checking for SQL injection risks...")
-            is_safe = self.injection_check_llm.check_injection(user_query)
-            
-            if not is_safe:
-                self.logger.warning(f"Potentially unsafe query detected: {user_query}")
+            classification = self.injection_check_llm.check_injection(user_query)
+
+            if classification == "injection":
+                self.logger.warning(f"SQL injection attempt detected: {user_query}")
                 return {
                     "status": "error",
                     "error_type": "security_violation",
@@ -56,18 +56,17 @@ class QueryToSQLChain:
                     "user_query": user_query,
                     "formatted_response": "I cannot process this request as it contains content that violates our security policies. Please rephrase your question using standard data retrieval language."
                 }
-            
-            # Test database connection first
-            if not self.db_executor.test_connection():
+            elif classification == "unrelated":
+                self.logger.info(f"Unrelated query detected: {user_query}")
                 return {
                     "status": "error",
-                    "error_type": "database_connection",
-                    "error_message": "Unable to connect to the database. Please try again later.",
+                    "error_type": "unrelated_query",
+                    "error_message": "This query is not related to the healthcare analytics database.",
                     "user_query": user_query,
-                    "formatted_response": "I'm currently unable to connect to the database. Please try again in a few moments."
+                    "formatted_response": "I'm a healthcare analytics assistant designed to help you query our healthcare database containing information about healthcare professionals and medical representative interactions. Your question appears to be unrelated to this database. Please ask questions about HCPs, medical representatives, interactions, specialties, or related healthcare data analysis."
                 }
-            
-            self.logger.info("Query passed security check, continuing with processing...")
+
+            self.logger.info("Query classified as valid, continuing with processing...")
             
             # Step 1: Retrieve relevant schema chunks using RAG
             self.logger.info("Step 1: Retrieving schema chunks...")
