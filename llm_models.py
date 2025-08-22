@@ -243,13 +243,20 @@ class SQLGeneratorLLM(GeminiLLM):
         """
         prompt = f"""You are an expert SQL generator. Given step-by-step reasoning describing how to build an SQL query, generate the exact MySQL query.
 
-Follow these rules:
+Follow these strict HARD RULES (must follow exactly):
 - Use only the tables and columns listed in the schema.
 - Use proper JOINs, WHERE clauses, GROUP BY, ORDER BY, DISTINCT, and aggregations as described.
-- Output only a single valid SQL query â€” no explanations or extra text.
+- For boolean columns listed in the schema, always compare using = TRUE or = FALSE (never 1/0).
+- Output only a single valid SQL query — no explanations or extra text.
 - Escape single quotes in string literals.
 - Use MySQL syntax.
+- Only add JOINs if the requested columns come from different tables per the provided schema relationships.
+- Prefer the simplest single-table query when the requested columns exist in one table.
 - If the reasoning is ambiguous about tables or columns, do your best to infer from the schema.
+- If the user says "show all or find all" (and does NOT name a column), use: SELECT * FROM <table> ...
+- Never expand SELECT * into individual columns unless the user explicitly asks to list columns.
+- Do NOT add DISTINCT unless the user explicitly asks for “unique”, “distinct”, or “no duplicates”.
+- Do NOT add ORDER BY unless the user explicitly asks for sorting.
 - Never query for all the columns from a specific table, only ask for a the few relevant columns given the question.
 - Pay attention to use only the column names that you can see in the schema description.
 - Be careful to not query for columns that do not exist.
