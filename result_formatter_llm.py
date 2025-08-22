@@ -34,6 +34,7 @@ class GeminiLLM:
         except Exception as e:
             print(f"Error generating response: {e}")
             return "Error generating response"
+
 from typing import List, Tuple, Optional
 
 class ResultFormatterLLM(GeminiLLM):
@@ -51,11 +52,9 @@ class ResultFormatterLLM(GeminiLLM):
         if error_message:
             prompt = f"""The user asked: "{user_query}"
 
-The system attempted to execute this SQL query: {sql_query}
+There was an error processing the request.
 
-However, there was an error: {error_message}
-
-Please provide a professional, user-friendly response explaining what went wrong and suggesting how the user might rephrase their question. Be helpful and encouraging.
+Please provide a brief, professional response explaining that the request couldn't be processed and suggest how the user might rephrase their question. Be helpful and encouraging. Do not mention any technical details, SQL queries, or database tables.
 
 Response:"""
             
@@ -68,14 +67,13 @@ Response:"""
         if actual_total_rows == 0:
             prompt = f"""The user asked: "{user_query}"
 
-The SQL query executed successfully: {sql_query}
+No data was found matching the request.
 
-However, no data was found matching the criteria.
-
-Please provide a professional response informing the user that no results were found, and suggest they might try:
-- Checking if their search criteria are correct
-- Using different filters or date ranges
-- Asking about available data
+Please provide a brief response (2-3 sentences max) that:
+1. States that no data was returned
+2. Provides 3-4 practical suggestions for what the user can modify or try differently
+3. Keep it concise and user-friendly
+4. Do not mention SQL queries, database tables, or any technical implementation details
 
 Response:"""
             
@@ -141,5 +139,3 @@ Response:"""
             formatted_data.append(f"... and {total_rows - len(sample_results)} more records")
         
         return "\n".join(formatted_data)
-    
-    
