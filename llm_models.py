@@ -20,7 +20,7 @@ class GeminiLLM:
             print(f"Error loading model: {e}")
             raise
     
-    def generate_response(self, prompt: str, temperature: float = 0.7) -> str:
+    def generate_response(self, prompt: str, temperature: float = 0.0) -> str:
         """
         Generate response from the model
         
@@ -49,37 +49,78 @@ class InjectionCheckLLM(GeminiLLM):
     def __init__(self):
         super().__init__()
     
-    def check_injection(self, user_input: str) -> bool:
+    def check_injection(self, user_input: str) -> str:
         """
-        Check if user input contains SQL injection risks
+        Check if user input is valid, injection risk, or unrelated to database queries
         
         Args:
             user_input (str): User's natural language query
             
         Returns:
-            bool: True if safe, False if potentially dangerous
+            str: "valid", "injection", or "unrelated"
         """
         injection_check_prompt = """
-You are a security guard for SQL inputs.
-Your job: Check if the user's natural language input contains any SQL injection risks or suspicious patterns.
-- If the input is safe and contains no SQL injection risk, return "True"
-- If you detect any risk or suspicious content that could lead to SQL injection, return "False"
+You are a security guard and query classifier for a healthcare analytics database system.
 
-Examples of unsafe inputs (return False):
-- DROP TABLE users;
-- SELECT * FROM users WHERE username = 'admin' OR 1=1
-- DELETE FROM orders WHERE 'a'='a' OR '1'='1
-- any deletion, truncation or dropping or altering or updating or modifying anything in the database or inserting, anything that changes the database
+DATABASE CONTEXT:
+- Database name: healthcare_analytics
+- Main tables: july_HCPs (healthcare professionals), july_interactions (medical representative interactions)
+- july_HCPs contains: id (PK), customerid, englishname, isconsultant, isdecisionmaker, issamspeaker, isuniversitystaff, isampmspeaker, customerclassificationid, CustomerClassification, specialityid, Speciality, countryid, Country
+  Any query asking about HCP IDs, customer information, names, consultant status, decision maker status, speaker roles, university affiliation, classifications, specialties, or countries is valid.
 
-Examples of safe inputs (return True):
-- List all customers with country = 'USA'
-- Show me interactions from July 2023
-- Get the Arabic names of HCPs who had 'Approved' status
+- july_interactions contains: MRId, MRArFullName, InteractionId (PK), InteractionStatusId, InteractionStatus, reportdate, lineid, LineName, businessUnitId, BusinessUnitName, HCPId (FK), HCPCustomerId, HCPEnglishName, HCPArabicName, SpecialtyId, Specialty
+  Any query about medical representative IDs, names, interaction details, statuses, dates, line information, business units, or HCP-related data is valid.
 
-User input:
-{user_input}
+Your job: Classify the user's input into exactly one of these three categories:
 
-Output:"""
+1. **VALID** - Return "valid" for legitimate database queries about:
+   - Healthcare professionals (HCPs): names, specialties, countries, classifications, roles
+   - Medical representative interactions: counts, dates, status, business units
+   - Data analysis: filtering, grouping, counting, listing, aggregating
+   - Legitimate business questions about the healthcare data
+
+2. **INJECTION** - Return "injection" for SQL injection risks or database manipulation:
+   - SQL commands: DROP, DELETE, UPDATE, INSERT, ALTER, TRUNCATE, CREATE
+   - SQL injection patterns: OR 1=1, UNION SELECT, ; --, /* */, xp_cmdshell
+   - Database modification attempts
+   - Security bypass attempts
+   - Any attempt to change, delete, or manipulate database structure/data
+
+3. **UNRELATED** - Return "unrelated" for queries completely unrelated to healthcare analytics database:
+   - Weather, jokes, translations, mathematics, cooking, music, entertainment
+   - General knowledge questions unrelated to healthcare/database
+   - Personal questions about company executives or staff
+   - Technical support for non-database systems
+   - Requests for external services (Spotify, etc.)
+   - Creative writing, storytelling, or fiction requests
+
+Examples:
+
+VALID queries (return "valid"):
+- "List all HCPs from Egypt with cardiology specialty"
+- "Count interactions by medical representative"
+- "Show HCPs who are consultants and decision makers"
+- "Find interactions with approved status in July 2024"
+- "Get Arabic names of HCPs"
+
+INJECTION queries (return "injection"):
+- "DROP TABLE july_HCPs"
+- "SELECT * FROM users WHERE 1=1 OR 'a'='a'"
+- "DELETE FROM july_interactions WHERE true"
+- "; DROP DATABASE healthcare_analytics; --"
+
+UNRELATED queries (return "unrelated"):
+- "What is the weather today in Cairo?"
+- "Tell me a joke about doctors"
+- "Translate this sentence to French"
+- "Who is the president of EVA Pharma?"
+- "What's 5+5?"
+- "How do I cook pasta?"
+- "Play music from Spotify"
+
+User input: {user_input}
+
+Classification:"""
 
         try:
             response = self.generate_response(
@@ -87,24 +128,25 @@ Output:"""
                 temperature=0.0
             )
             
-            # Clean the response and check for True/False
+            # Clean the response and check for classification
             response = response.strip().lower()
             
             # Handle various possible responses
-            if "true" in response:
-                return True
-            elif "false" in response:
-                return False
+            if "valid" in response:
+                return "valid"
+            elif "injection" in response:
+                return "injection"
+            elif "unrelated" in response:
+                return "unrelated"
             else:
                 # If unclear response, err on the side of caution
                 print(f"Unclear injection check response: {response}")
-                return False
+                return "unrelated"
                 
         except Exception as e:
             print(f"Error in injection check: {e}")
             # If there's an error, err on the side of caution
-            return False
-
+            return "unrelated"
 
 class ReasoningLLM(GeminiLLM):
     def __init__(self):
@@ -188,7 +230,7 @@ Schema:
 
 Reasoning:"""
         
-        return self.generate_response(prompt, temperature=0.3)
+        return self.generate_response(prompt, temperature=0)
 
 
 class SQLGeneratorLLM(GeminiLLM):
@@ -204,7 +246,7 @@ class SQLGeneratorLLM(GeminiLLM):
 Follow these rules:
 - Use only the tables and columns listed in the schema.
 - Use proper JOINs, WHERE clauses, GROUP BY, ORDER BY, DISTINCT, and aggregations as described.
-- Output only a single valid SQL query — no explanations or extra text.
+- Output only a single valid SQL query â€” no explanations or extra text.
 - Escape single quotes in string literals.
 - Use MySQL syntax.
 - If the reasoning is ambiguous about tables or columns, do your best to infer from the schema.
@@ -225,7 +267,7 @@ Query:
 SQL:
 """
 
-        response = self.generate_response(prompt, temperature=0.1)
+        response = self.generate_response(prompt, temperature=0.0)
         return self._extract_sql(response)
 
     
@@ -275,7 +317,7 @@ Invalid SQL query to fix:
 
 Corrected SQL:"""
 
-        response = self.generate_response(prompt, temperature=0.1)
+        response = self.generate_response(prompt, temperature=0.0)
         return self._extract_sql_clean(response)
     
     def _extract_sql_clean(self, response: str) -> str:
