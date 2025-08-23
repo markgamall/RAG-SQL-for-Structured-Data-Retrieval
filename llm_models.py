@@ -2,15 +2,17 @@ import google.generativeai as genai
 import os
 from typing import Optional
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
+
 
 class GeminiLLM:
     def __init__(self, model_name: str = "gemini-2.0-flash"):
         self.model_name = model_name
         self.model = None
         self._load_model()
-    
+
     def _load_model(self):
         """Load the Gemini model with authentication"""
         try:
@@ -19,15 +21,15 @@ class GeminiLLM:
         except Exception as e:
             print(f"Error loading model: {e}")
             raise
-    
+
     def generate_response(self, prompt: str, temperature: float = 0.0) -> str:
         """
         Generate response from the model
-        
+
         Args:
             prompt (str): Input prompt
             temperature (float): Temperature for sampling
-            
+
         Returns:
             str: Generated response
         """
@@ -39,23 +41,107 @@ class GeminiLLM:
                 )
             )
             return response.text
-            
+
+        except Exception as e:
+            print(f"Error generating response: {e}")
+            return "Error generating response"
+
+class OllamaMistralLLM:
+    def __init__(self, model_name: str = "mistral"):
+        self.model_name = model_name
+
+    def generate_response(self, prompt: str, temperature: float = 0.7) -> str:
+        """
+        Generate response from Ollama's local Mistral model.
+
+        Args:
+            prompt (str): Input prompt
+            temperature (float): Sampling temperature
+        Returns:
+            str: Generated text
+        """
+        try:
+            url = "http://localhost:11434/api/generate"
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "options": {
+                    "temperature": temperature
+                },
+                "stream": False
+            }
+
+            resp = requests.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+            # Ollama returns JSON with 'response' for the generated text
+            return data.get("response", "").strip()
+
         except Exception as e:
             print(f"Error generating response: {e}")
             return "Error generating response"
 
 
+
+class QwenLLM:
+    def __init__(self, model_name: str = "qwen2.5-coder:7b"):
+        self.model_name = model_name
+        self._load_model()
+
+    def _load_model(self):
+        """Placeholder for symmetry with GeminiLLM — Ollama loads models on request."""
+        try:
+            # For Ollama, no explicit preload; ensure server is reachable
+            resp = requests.get("http://localhost:11434/api/tags")
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"Error connecting to Ollama: {e}")
+            raise
+
+    def generate_response(self, prompt: str, temperature: float = 0.7) -> str:
+        """
+        Generate a response from the Ollama model.
+
+        Args:
+            prompt (str): Input prompt
+            temperature (float): Sampling temperature
+
+        Returns:
+            str: Generated response
+        """
+        try:
+            url = "http://localhost:11434/api/generate"
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "options": {
+                    "temperature": temperature
+                },
+                "stream": False
+            }
+
+            resp = requests.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+            return data.get("response", "").strip()
+
+        except Exception as e:
+            print(f"Error generating response from Ollama: {e}")
+            return "Error generating response"
+
 class InjectionCheckLLM(GeminiLLM):
     def __init__(self):
         super().__init__()
-    
+
     def check_injection(self, user_input: str) -> str:
         """
         Check if user input is valid, injection risk, or unrelated to database queries
-        
+
         Args:
             user_input (str): User's natural language query
-            
+
         Returns:
             str: "valid", "injection", or "unrelated"
         """
@@ -124,13 +210,13 @@ Classification:"""
 
         try:
             response = self.generate_response(
-                injection_check_prompt.format(user_input=user_input), 
+                injection_check_prompt.format(user_input=user_input),
                 temperature=0.0
             )
-            
+
             # Clean the response and check for classification
             response = response.strip().lower()
-            
+
             # Handle various possible responses
             if "valid" in response:
                 return "valid"
@@ -142,18 +228,18 @@ Classification:"""
                 # If unclear response, err on the side of caution
                 print(f"Unclear injection check response: {response}")
                 return "unrelated"
-                
+
         except Exception as e:
             print(f"Error in injection check: {e}")
             # If there's an error, err on the side of caution
             return "unrelated"
 
+
 class ReasoningLLM(GeminiLLM):
     def __init__(self):
         super().__init__()
-    
+
     def generate_reasoning(self, query: str, schema_context: str) -> str:
-        
         prompt = f"""You are an expert SQL reasoning assistant. Your job is to analyze the user's natural language question and database schema, then explain step-by-step how to translate the question into an SQL query.
 
 Given the user question and the database schema, think through:
@@ -229,14 +315,14 @@ Schema:
 {schema_context}
 
 Reasoning:"""
-        
+
         return self.generate_response(prompt, temperature=0)
 
 
 class SQLGeneratorLLM(GeminiLLM):
     def __init__(self):
         super().__init__()
-    
+
     def generate_sql(self, query: str, reasoning: str, schema_context: str) -> str:
         """
         Generate SQL query based on user query and schema using strict SQL generation rules.
@@ -277,32 +363,31 @@ SQL:
         response = self.generate_response(prompt, temperature=0.0)
         return self._extract_sql(response)
 
-    
     def _extract_sql(self, response: str) -> str:
         """Extract SQL query from the response"""
         # Remove common prefixes and clean up
         response = response.strip()
-        
+
         # Remove markdown formatting if present
         if response.startswith("```sql"):
             response = response.replace("```sql", "").replace("```", "").strip()
         elif response.startswith("```"):
             response = response.replace("```", "").strip()
-        
+
         # Ensure it starts with SELECT if it's a query
         if not response.upper().startswith(("SELECT", "INSERT", "UPDATE", "DELETE", "WITH")):
             if "SELECT" in response.upper():
                 # Find the first SELECT and start from there
                 select_index = response.upper().find("SELECT")
                 response = response[select_index:]
-        
+
         return response.strip()
 
 
 class SQLCorrectorLLM(GeminiLLM):
     def __init__(self):
         super().__init__()
-    
+
     def correct_sql(self, invalid_sql: str, schema_context: str, user_query: str = "") -> str:
         prompt = f"""You are an expert SQL corrector. Your job is to fix the syntax errors in the given SQL query and make it valid MySQL syntax.
 
@@ -326,11 +411,11 @@ Corrected SQL:"""
 
         response = self.generate_response(prompt, temperature=0.0)
         return self._extract_sql_clean(response)
-    
+
     def _extract_sql_clean(self, response: str) -> str:
         """Extract and clean SQL query from response, ensuring only SQL is returned"""
         response = response.strip()
-        
+
         # Remove markdown formatting
         if "```sql" in response:
             response = response.split("```sql")[1].split("```")[0].strip()
@@ -339,47 +424,47 @@ Corrected SQL:"""
             parts = response.split("```")
             if len(parts) >= 2:
                 response = parts[1].strip()
-        
+
         # Remove any explanatory text before or after SQL
         lines = response.split('\n')
         sql_lines = []
         sql_started = False
-        
+
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-                
+
             # Start collecting when we see SQL keywords
             if line.upper().startswith(('SELECT', 'WITH', 'INSERT', 'UPDATE', 'DELETE')):
                 sql_started = True
-            
+
             # If SQL has started, collect the line
             if sql_started:
                 sql_lines.append(line)
-                
+
                 # Stop if we hit a semicolon at the end of a line (end of query)
                 if line.endswith(';'):
                     break
-        
+
         # If no SQL keywords found, try to find SELECT in the text
         if not sql_lines and 'SELECT' in response.upper():
             select_index = response.upper().find('SELECT')
             response = response[select_index:]
-            
+
             # Find the end of the query (semicolon or end of reasonable SQL)
             for i, char in enumerate(response):
                 if char == ';':
-                    response = response[:i+1]
+                    response = response[:i + 1]
                     break
-            
+
             sql_lines = [response.strip()]
-        
+
         # Join the SQL lines
         corrected_sql = ' '.join(sql_lines) if sql_lines else response.strip()
-        
+
         # Ensure it ends with semicolon if it doesn't already
         if corrected_sql and not corrected_sql.endswith(';'):
             corrected_sql += ';'
-        
+
         return corrected_sql
